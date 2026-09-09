@@ -7,40 +7,87 @@
 <title>Mental Health Day Screen</title>
 <style>
   html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
-  #player, iframe { width: 100%; height: 100%; border: 0; display: block; }
 
-  /* Fallback: only shown if autoplay is blocked. Click anywhere to start. */
-  #tap {
-    position: fixed; inset: 0;
-    display: none;
-    align-items: center; justify-content: center;
-    background: rgba(0,0,0,.55);
-    cursor: pointer;
-    font: 500 16px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
-    color: #fff;
+  .stage { position: fixed; inset: 0; background: #000; }
+
+  /* The player never receives mouse events, so YouTube's title bar and
+     controls never appear on hover. */
+  #player, .stage iframe {
+    width: 100%; height: 100%; border: 0; display: block;
+    pointer-events: none;
+  }
+
+  /* Catches clicks for the autoplay fallback. */
+  #shield {
+    position: absolute; inset: 0;
+    cursor: default;
     -webkit-tap-highlight-color: transparent;
   }
-  #tap.show { display: flex; }
-  #tap span {
-    padding: 14px 26px;
-    border: 1px solid rgba(255,255,255,.5);
-    border-radius: 999px;
+
+  /* Hides YouTube's title bar during the first moment of playback. */
+  #cover {
+    position: absolute; inset: 0;
+    background: #000;
+    transition: opacity .5s ease;
   }
+  #cover.gone { opacity: 0; }
+
+  /* Replaces YouTube's replay screen when the video finishes. */
+  #endcard {
+    position: absolute; inset: 0;
+    display: none;
+    align-items: center; justify-content: center;
+    flex-direction: column; gap: 14px;
+    background: #000;
+    color: #fff;
+    text-align: center;
+    font: 600 34px/1.25 system-ui, -apple-system, "Segoe UI", sans-serif;
+    letter-spacing: .01em;
+  }
+  #endcard.show { display: flex; }
+  #endcard small {
+    font-size: 17px; font-weight: 400; opacity: .75; letter-spacing: .02em;
+  }
+
+  /* Only appears if the browser refuses to autoplay. */
+  #tap {
+    position: absolute; inset: 0;
+    display: none;
+    align-items: center; justify-content: center;
+    background: rgba(0,0,0,.5);
+    color: #fff; cursor: pointer;
+    font: 500 16px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  #tap.show { display: flex; }
+  #tap span { padding: 14px 26px; border: 1px solid rgba(255,255,255,.5); border-radius: 999px; }
 </style>
 </head>
 <body>
 
-<div id="player"></div>
-<div id="tap"><span>Click to play</span></div>
+<div class="stage">
+  <div id="player"></div>
+  <div id="cover"></div>
+  <div id="endcard">
+    World Mental Health Day
+    <small>Wear something bright</small>
+  </div>
+  <div id="shield"></div>
+  <div id="tap"><span>Click to play</span></div>
+</div>
 
 <script>
   // ---- Settings -------------------------------------------------
-  var VIDEO_ID = '2zp2bUAEb-w';
-  var LOOP     = false;   // set to true to repeat continuously
-  var MUTED    = true;    // must stay true for autoplay to be allowed
+  var VIDEO_ID        = '2zp2bUAEb-w';
+  var LOOP            = true;   // repeats forever; no end card is shown
+  var INTRO_COVER_MS  = 900;    // black cover at the start, hides the title bar
   // ---------------------------------------------------------------
 
-  var player, tap = document.getElementById('tap');
+  var player,
+      cover   = document.getElementById('cover'),
+      endcard = document.getElementById('endcard'),
+      shield  = document.getElementById('shield'),
+      tap     = document.getElementById('tap'),
+      started = false;
 
   var tag = document.createElement('script');
   tag.src = 'https://www.youtube.com/iframe_api';
@@ -51,41 +98,60 @@
       videoId: VIDEO_ID,
       playerVars: {
         autoplay: 1,
-        mute: MUTED ? 1 : 0,
+        mute: 1,             // required for autoplay to be permitted
         controls: 0,
         rel: 0,
         modestbranding: 1,
         playsinline: 1,
+        disablekb: 1,
+        iv_load_policy: 3,   // no annotations
+        fs: 0,
         loop: LOOP ? 1 : 0,
         playlist: LOOP ? VIDEO_ID : undefined
       },
-      events: {
-        onReady: onReady,
-        onStateChange: onStateChange
-      }
+      events: { onReady: onReady, onStateChange: onStateChange }
     });
   }
 
   function onReady(e) {
-    // Belt and braces: ask it to play, then set the referrer policy on the
-    // iframe the API just built (this is what avoids Error 153).
     var f = document.querySelector('iframe');
     if (f) f.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
 
-    if (MUTED) e.target.mute();
+    e.target.mute();
     e.target.playVideo();
 
-    // If nothing is playing shortly after load, autoplay was refused.
     setTimeout(function () {
-      if (player && player.getPlayerState && player.getPlayerState() !== YT.PlayerState.PLAYING) {
-        tap.classList.add('show');
-      }
-    }, 1200);
+      if (!started) tap.classList.add('show');
+    }, 1400);
   }
 
   function onStateChange(e) {
-    if (e.data === YT.PlayerState.PLAYING) tap.classList.remove('show');
+    if (e.data === YT.PlayerState.PLAYING) {
+      started = true;
+      tap.classList.remove('show');
+      endcard.classList.remove('show');
+      setTimeout(function () { cover.classList.add('gone'); }, INTRO_COVER_MS);
+    }
+    if (e.data === YT.PlayerState.ENDED) {
+      if (LOOP) {
+        // Belt and braces: restart manually in case the loop parameter
+        // doesn't fire, which avoids a flash of YouTube's replay screen.
+        e.target.seekTo(0);
+        e.target.playVideo();
+      } else {
+        endcard.classList.add('show');
+      }
+    }
   }
+
+  shield.addEventListener('click', function () {
+    if (!player) return;
+    if (player.getPlayerState() !== YT.PlayerState.PLAYING) {
+      endcard.classList.remove('show');
+      player.seekTo(0);
+      player.playVideo();
+    }
+  });
 
   tap.addEventListener('click', function () {
     if (player) { player.playVideo(); }
