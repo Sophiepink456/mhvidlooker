@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>Mental Health Day Screen</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  #player, iframe { width: 100%; height: 100%; border: 0; display: block; }
+
+  /* Fallback: only shown if autoplay is blocked. Click anywhere to start. */
+  #tap {
+    position: fixed; inset: 0;
+    display: none;
+    align-items: center; justify-content: center;
+    background: rgba(0,0,0,.55);
+    cursor: pointer;
+    font: 500 16px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: #fff;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #tap.show { display: flex; }
+  #tap span {
+    padding: 14px 26px;
+    border: 1px solid rgba(255,255,255,.5);
+    border-radius: 999px;
+  }
+</style>
+</head>
+<body>
+
+<div id="player"></div>
+<div id="tap"><span>Click to play</span></div>
+
+<script>
+  // ---- Settings -------------------------------------------------
+  var VIDEO_ID = '2zp2bUAEb-w';
+  var LOOP     = false;   // set to true to repeat continuously
+  var MUTED    = true;    // must stay true for autoplay to be allowed
+  // ---------------------------------------------------------------
+
+  var player, tap = document.getElementById('tap');
+
+  var tag = document.createElement('script');
+  tag.src = 'https://www.youtube.com/iframe_api';
+  document.head.appendChild(tag);
+
+  function onYouTubeIframeAPIReady() {
+    player = new YT.Player('player', {
+      videoId: VIDEO_ID,
+      playerVars: {
+        autoplay: 1,
+        mute: MUTED ? 1 : 0,
+        controls: 0,
+        rel: 0,
+        modestbranding: 1,
+        playsinline: 1,
+        loop: LOOP ? 1 : 0,
+        playlist: LOOP ? VIDEO_ID : undefined
+      },
+      events: {
+        onReady: onReady,
+        onStateChange: onStateChange
+      }
+    });
+  }
+
+  function onReady(e) {
+    // Belt and braces: ask it to play, then set the referrer policy on the
+    // iframe the API just built (this is what avoids Error 153).
+    var f = document.querySelector('iframe');
+    if (f) f.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+
+    if (MUTED) e.target.mute();
+    e.target.playVideo();
+
+    // If nothing is playing shortly after load, autoplay was refused.
+    setTimeout(function () {
+      if (player && player.getPlayerState && player.getPlayerState() !== YT.PlayerState.PLAYING) {
+        tap.classList.add('show');
+      }
+    }, 1200);
+  }
+
+  function onStateChange(e) {
+    if (e.data === YT.PlayerState.PLAYING) tap.classList.remove('show');
+  }
+
+  tap.addEventListener('click', function () {
+    if (player) { player.playVideo(); }
+    tap.classList.remove('show');
+  });
+</script>
+
+</body>
+</html>
